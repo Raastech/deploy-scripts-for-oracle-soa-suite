@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="windows-1252" ?>
+<adf-config xmlns="http://xmlns.oracle.com/adf/config" xmlns:adf="http://xmlns.oracle.com/adf/config/properties">
+  <adf:adf-properties-child xmlns="http://xmlns.oracle.com/adf/config/properties">
+    <adf-property name="adfAppUID" value="TemporaryMDS-2296"/>
+  </adf:adf-properties-child>
+  <adf-mds-config xmlns="http://xmlns.oracle.com/adf/mds/config">
+    <mds-config xmlns="http://xmlns.oracle.com/mds/config">
+      <persistence-config>
+        <metadata-namespaces>
+          <namespace metadata-store-usage="mstore-usage_1" path="/apps"/>
+          <namespace metadata-store-usage="mstore-usage_1" path="/deployed-composites"/>
+          <namespace metadata-store-usage="mstore-usage_1" path="/soa"/>
+        </metadata-namespaces>
+        <metadata-store-usages>
+          <metadata-store-usage id="mstore-usage_1">
+            <metadata-store class-name="oracle.mds.persistence.stores.db.DBMetadataStore">
+              <property value="@MDSSchema@" name="jdbc-userid"/>
+              <property value="@MDSPassword@" name="jdbc-password"/>
+              <property value="@MDSJDBCConnection@" name="jdbc-url"/>
+              <property value="soa-infra" name="partition-name"/>
+            </metadata-store>
+          </metadata-store-usage>
+        </metadata-store-usages>
+      </persistence-config>
+    </mds-config>
+  </adf-mds-config>
+</adf-config>

@@ -1,0 +1,610 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<project name="soaDeployAll" default="help">
+
+  <property environment="env"/>
+
+  <taskdef resource="net/sf/antcontrib/antcontrib.properties"/>
+  <taskdef resource="net/sf/antcontrib/antlib.xml" >
+    <classpath>
+      <pathelement location="${antcontrib}" />
+    </classpath>
+  </taskdef>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: help                                                                     -->
+  <!-- ================================================================================ -->
+
+  <target name="help">
+
+    <echo>
+
+  License:
+
+    #################################################################################
+    #                                                                               #
+    #                  Deployment Script for Oracle SOA Suite 11g                   #
+    #                        Copyright 2014 Raastech,Inc.                           #
+    #     Licensed under the Apache License, Version 2.0 (the "License");           #
+    #     you may not use this file except in compliance with the License.          #
+    #     You may obtain a copy of the License at                                   #
+    #                                                                               #
+    #                   http://www.apache.org/licenses/LICENSE-2.0                  #
+    #                                                                               #
+    #     Unless required by applicable law or agreed to in writing, software       #
+    #     distributed under the License is distributed on an "AS IS" BASIS,         #
+    #     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  #
+    #     See the License for the specific language governing permissions and       #
+    #     limitations under the License.                                            #
+    #                                                                               #
+    #################################################################################
+
+
+  Contact information:
+
+    Ahmed Aboulnaga
+    ahmed.aboulnaga@ipnweb.com
+
+
+  Usable targets are:
+
+    help                   - This help
+    detokenizeComposites   - Detokenizes the code based on 'config/soa-build-[env].properties'
+    tokenizeComposites     - Tokenizes the code based on 'config/soa-build-[env].properties'
+    deployComposites       - Packages and deploys composites in 'CustomProcessList.txt'
+    undeployComposites     - Undeploys composites in 'CustomProcessList.txt'
+    startComposites        - Starts composites in 'CustomProcessList.txt'
+    stopComposites         - Stops composites in 'CustomProcessList.txt'
+    importMDSArtifacts     - Imports MDS artifacts in file 'CustomMDSList.txt'
+    exportMDS              - Exports the entire MDS into a JAR file
+    listDeployedComposites - Lists deployed composites
+
+
+  Usage example:
+
+    export ORACLE_HOME=/u01/app/oracle
+    export ANT_HOME=$ORACLE_HOME/middleware/modules/org.apache.ant_1.7.1
+    export PATH=$ANT_HOME/bin:$PATH
+    export CURRENT_FOLDER=`pwd`
+    export JAVA_HOME=$ORACLE_HOME/jdk1.6.0_21
+
+    ant -f build.soa.xml help -Dtargetenv=anything
+    ant -f build.soa.xml detokenizeComposites   -Dtargetenv=sandbox
+    ant -f build.soa.xml tokenizeComposites     -Dtargetenv=sandbox
+    ant -f build.soa.xml deployComposites       -Dtargetenv=sandbox
+    ant -f build.soa.xml undeployComposites     -Dtargetenv=sandbox
+    ant -f build.soa.xml startComposites        -Dtargetenv=sandbox
+    ant -f build.soa.xml stopComposites         -Dtargetenv=sandbox
+    ant -f build.soa.xml importMDSArtifacts     -Dtargetenv=sandbox
+    ant -f build.soa.xml exportMDS              -Dtargetenv=sandbox
+    ant -f build.soa.xml listDeployedComposites -Dtargetenv=sandbox
+
+    </echo>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- Check for an load property files                                                 -->
+  <!-- ================================================================================ -->
+
+  <fail message="ERROR: Parameter 'targetenv' missing.">
+    <condition>
+      <not>
+        <isset property="targetenv" />
+      </not>
+    </condition>
+  </fail>
+
+  <available file="config/soa-environment.properties" property="file.exists" value="true" />
+  <fail unless="file.exists" message="ERROR: Filename 'config/soa-environment.properties' does not exist." />
+  <property file="config/soa-environment.properties"/>
+
+  <available file="config/soa-build-${targetenv}.properties" property="file.exists" value="true" />
+  <fail unless="file.exists" message="ERROR: Filename 'config/soa-build-${targetenv}.properties' does not exist." />
+  <property file="config/soa-build-${targetenv}.properties"/>
+
+  <available file="config/soa-token-${targetenv}.properties" property="file.exists" value="true" />
+  <fail unless="file.exists" message="ERROR: Filename 'config/soa-token-${targetenv}.properties' does not exist." />
+  <property file="config/soa-token-${targetenv}.properties"/>
+
+  <available file="config/soa-cfgplan-${targetenv}.xml" property="file.exists" value="true" />
+  <fail unless="file.exists" message="ERROR: Filename 'config/soa-cfgplan-${targetenv}.xml' does not exist." />
+  <property name="deploymentplan.name" value="config/soa-cfgplan-${targetenv}.xml"/>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: deployComposites                                                         -->
+  <!-- ================================================================================ -->
+
+  <target name="deployComposites">
+
+    <available file="${customProcessList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customProcessList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customProcessList}"/>
+
+    <var name="errorCount" value="0"/>
+    <var name="processCount" value="0"/>
+    <var name="errorProcessNames" value="(none)"/>
+
+    <trycatch property="tryName" reference="exception_ref">
+      <try>
+        <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+          <sequential>
+            <propertyregex property="composite.name"      input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\1" override="true"/>
+            <propertyregex property="composite.partition" input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\2" override="true"/>
+            <propertyregex property="composite.revision"  input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\3" override="true"/>
+            <propertyregex property="default.composite"   input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\4" override="true"/>
+            <propertyregex property="folder.name"         input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\5" override="true"/>
+            <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+            <echo>
+================================================================================
+PACKAGE COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+            </echo>
+
+            <ant antfile="${oracle.home}/bin/ant-sca-package.xml" target="package" inheritall="false">
+              <property name="compositeDir" value="${svn.localdir}/${folder.name}"/>
+              <property name="compositeName" value="${composite.name}"/>
+              <property name="revision" value="${composite.revision}"/>
+            </ant>
+
+            <echo>
+================================================================================
+DEPLOY COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+            </echo>
+            <ant antfile="${oracle.home}/bin/ant-sca-deploy.xml" target="deploy" inheritall="false">
+              <property name="user" 		value="${server.user}"/>
+              <property name="password" 	value="${server.password}"/>
+              <property name="serverURL" 	value="${serverURL}/soa-infra/deployer"/>
+              <property name="sarLocation" 	value="${svn.localdir}/${folder.name}/deploy/sca_${composite.name}_rev${composite.revision}.jar"/>
+              <property name="partition" 	value="${composite.partition}"/>
+              <property name="overwrite" 	value="true"/>
+              <property name="forceDefault" 	value="${default.composite}"/>
+              <property name="configplan" 	value="${deploymentplan.name}"/>
+            </ant>
+
+            <sleep seconds="3" />
+          </sequential>
+        </for>
+      </try>
+      <catch>
+        <property name="exception" refid="exception_ref" />
+        <property name="message" value="ERROR IN TRYCATCH BLOCK:${line.separator}${exception}" />
+        <echo></echo>
+        <echo message="${message}" />
+        <math result="errorCount" operand1="${errorCount}" operation="+" operand2="1" datatype="int"/>
+        <var name="errorProcessNames" value="${composite.name}"/>
+      </catch>
+    </trycatch>
+
+    <echo>
+**************************************************************
+*
+*  ANT TARGET NAME:            deployComposites
+*  FAILED PROCESS:             ${errorProcessNames}
+*
+**************************************************************
+    </echo>
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: undeployComposites                                                       -->
+  <!-- ================================================================================ -->
+
+  <target name="undeployComposites">
+
+    <available file="${customProcessList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customProcessList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customProcessList}"/>
+
+    <var name="errorCount" value="0"/>
+    <var name="processCount" value="0"/>
+    <var name="errorProcessNames" value="*"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="composite.name"      input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\1" override="true"/>
+        <propertyregex property="composite.partition" input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\2" override="true"/>
+        <propertyregex property="composite.revision"  input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\3" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <trycatch property="tryName" reference="exception_ref">
+          <try>
+
+            <echo>
+================================================================================
+UNDEPLOY COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+            </echo>
+            <ant antfile="${oracle.home}/bin/ant-sca-deploy.xml" target="undeploy" inheritall="false">
+              <property name="user"             value="${server.user}"/>
+              <property name="password"         value="${server.password}"/>
+              <property name="serverURL"        value="${serverURL}/soa-infra/deployer"/>
+              <property name="compositeName"    value="${composite.name}"/>
+              <property name="partition"        value="${composite.partition}"/>
+              <property name="revision"         value="${composite.revision}"/>
+            </ant>
+
+          </try>
+          <catch>
+            <property name="exception" refid="exception_ref" />
+            <property name="message" value="ERROR IN TRYCATCH BLOCK:${line.separator}${exception}" />
+            <echo></echo>
+            <echo message="${message}" />
+            <math result="errorCount" operand1="${errorCount}" operation="+" operand2="1" datatype="int"/>
+            <var name="errorProcessNames" value="${errorProcessNames}${line.separator}*      ${composite.name}"/>
+          </catch>
+        </trycatch>
+
+        <sleep seconds="1" />
+      </sequential>
+    </for>
+    <echo>
+**************************************************************
+*
+*  ANT TARGET NAME:            undeployComposites
+*  TOTAL NUMBER OF ERRORS:     ${errorCount} of ${processCount} processes
+*  FAILED PROCESSES:
+${errorProcessNames}
+*
+**************************************************************
+    </echo>
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: startComposites                                                          -->
+  <!-- ================================================================================ -->
+
+  <target name="startComposites">
+
+    <available file="${customProcessList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customProcessList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customProcessList}"/>
+
+    <var name="errorCount" value="0"/>
+    <var name="processCount" value="0"/>
+    <var name="errorProcessNames" value="*"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="composite.name"      input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\1" override="true"/>
+        <propertyregex property="composite.partition" input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\2" override="true"/>
+        <propertyregex property="composite.revision"  input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\3" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <echo>
+================================================================================
+START COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+        </echo>
+        <ant antfile="${oracle.home}/bin/ant-sca-mgmt.xml" target="startComposite" inheritall="false">
+          <property name="user"             value="${server.user}"/>
+          <property name="password"         value="${server.password}"/>
+          <property name="host"             value="${server.host}"/>
+          <property name="port"             value="${server.port}"/>
+          <property name="compositeName"    value="${composite.name}"/>
+          <property name="partition"        value="${composite.partition}"/>
+          <property name="revision"         value="${composite.revision}"/>
+        </ant>
+
+      </sequential>
+    </for>
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: stopComposites                                                           -->
+  <!-- ================================================================================ -->
+
+  <target name="stopComposites">
+
+    <available file="${customProcessList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customProcessList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customProcessList}"/>
+
+    <var name="errorCount" value="0"/>
+    <var name="processCount" value="0"/>
+    <var name="errorProcessNames" value="*"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="composite.name"      input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\1" override="true"/>
+        <propertyregex property="composite.partition" input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\2" override="true"/>
+        <propertyregex property="composite.revision"  input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\3" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <echo>
+================================================================================
+STOP COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+        </echo>
+        <ant antfile="${oracle.home}/bin/ant-sca-mgmt.xml" target="stopComposite" inheritall="false">
+          <property name="user"             value="${server.user}"/>
+          <property name="password"         value="${server.password}"/>
+          <property name="host"             value="${server.host}"/>
+          <property name="port"             value="${server.port}"/>
+          <property name="compositeName"    value="${composite.name}"/>
+          <property name="partition"        value="${composite.partition}"/>
+          <property name="revision"         value="${composite.revision}"/>
+        </ant>
+
+      </sequential>
+    </for>
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: detokenizeComposites                                                     -->
+  <!-- ================================================================================ -->
+
+  <target name="detokenizeComposites">
+
+    <available file="${customProcessList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customProcessList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customProcessList}"/>
+
+    <var name="errorCount" value="0"/>
+    <var name="processCount" value="0"/>
+    <var name="errorProcessNames" value="*"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="composite.name"      input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\1" override="true"/>
+        <propertyregex property="composite.partition" input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\2" override="true"/>
+        <propertyregex property="composite.revision"  input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\3" override="true"/>
+        <propertyregex property="default.composite"   input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\4" override="true"/>
+        <propertyregex property="folder.name"         input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*),(.*)" select="\5" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <echo>
+================================================================================
+DETOKENIZE COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+        </echo>
+
+        <delete file="${svn.localdir}/${folder.name}/SCA-INF/classes/META-INF/adf-config.xml"/>
+        <copy file="includes/adf-config.xml" todir="${svn.localdir}/${folder.name}/SCA-INF/classes/META-INF"/>
+
+        <replace dir="${svn.localdir}/${folder.name}" summary="true">
+          <include name="**/*.wsdl"/>
+          <include name="**/*.xsd"/>
+          <include name="**/*.xml"/>
+          <include name="**/*.xsl"/>
+          <include name="**/*.bpel"/>
+          <include name="**/*.esbsvc"/>
+          <include name="**/*.mplan"/>
+          <include name="**/*.componentType"/>
+          <include name="**/*.esbsys"/>
+          <include name="**/*.esbgrp"/>
+          <replacefilter token="@SOAServer@"  			value="${SOAServer}"/>
+          <replacefilter token="@MDSSchema@"			value="${MDSSchema}"/>
+          <replacefilter token="@MDSPassword@"			value="${MDSPassword}"/>
+          <replacefilter token="@MDSJDBCConnection@"            value="${MDSJDBCConnection}"/>
+        </replace>
+
+      </sequential>
+    </for>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: tokenizeComposites                                                       -->
+  <!-- ================================================================================ -->
+
+  <target name="tokenizeComposites">
+
+    <available file="${customProcessList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customProcessList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customProcessList}"/>
+
+    <var name="errorCount" value="0"/>
+    <var name="processCount" value="0"/>
+    <var name="errorProcessNames" value="*"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="composite.name"      input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\1" override="true"/>
+        <propertyregex property="composite.partition" input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\2" override="true"/>
+        <propertyregex property="composite.revision"  input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\3" override="true"/>
+        <propertyregex property="default.composite"   input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\4" override="true"/>
+        <propertyregex property="folder.name"         input="@{processName}" regexp="(.*),(.*),(.*),(.*),(.*)" select="\5" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <echo>
+================================================================================
+TOKENIZE COMPOSITE #${processCount}: ${composite.name}
+================================================================================
+        </echo>
+
+        <delete file="${svn.localdir}/${folder.name}/SCA-INF/classes/META-INF/adf-config.xml"/>
+        <copy file="includes/adf-config.xml" todir="${svn.localdir}/${folder.name}/SCA-INF/classes/META-INF"/>
+
+        <replace dir="${svn.localdir}/${folder.name}" summary="true">
+          <include name="**/*.wsdl"/>
+          <include name="**/*.xsd"/>
+          <include name="**/*.xml"/>
+          <include name="**/*.xsl"/>
+          <include name="**/*.bpel"/>
+          <include name="**/*.esbsvc"/>
+          <include name="**/*.esbsys"/>
+          <include name="**/*.esbgrp"/>
+          <include name="**/*.mplan"/>
+          <include name="**/*.componentType"/>
+          <replacefilter token="${SOAServer}"                    value="@SOAServer@"/>
+          <replacefilter token="${MDSSchema}"                    value="@MDSSchema@"/>
+          <replacefilter token="${MDSPassword}"                  value="@MDSPassword@"/>
+          <replacefilter token="${MDSJDBCConnection}"            value="@MDSJDBCConnection@"/>
+        </replace>
+
+      </sequential>
+    </for>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: listDeployedComposites                                                   -->
+  <!-- ================================================================================ -->
+
+  <target name="listDeployedComposites">
+
+    <ant antfile="${oracle.home}/bin/ant-sca-mgmt.xml" target="listDeployedComposites" inheritall="false">
+      <property name="host" 	value="${server.host}"/>
+      <property name="port" 	value="${server.port}"/>
+      <property name="user" 	value="${server.user}"/>
+      <property name="password"	value="${server.password}"/>
+    </ant>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: deleteMDSArtifacts                                                       -->
+  <!-- ================================================================================ -->
+
+  <target name="deleteMDSArtifacts">
+
+    <available file="${customMDSList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customMDSList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customMDSList}"/>
+
+    <var name="processCount" value="0"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="mds.applications" input="@{processName}" regexp="(.*),(.*)" select="\1" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <echo>
+================================================================================
+UNDEPLOY ARTIFACT #${processCount}: ${mds.applications}
+================================================================================
+        </echo>
+
+        <foreach list="${mds.applications}" param="mds.application" target="deleteMDSArtifact" inheritall="true" inheritrefs="false"/>
+
+      </sequential>
+    </for>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: importMDSArtifacts                                                       -->
+  <!-- ================================================================================ -->
+
+  <target name="importMDSArtifacts">
+
+    <available file="${customMDSList}" property="file.exists" value="true" />
+    <fail unless="file.exists" message="ERROR: Filename '${customMDSList}' does not exist." />
+    <loadfile property="allprocesses" srcFile="${customMDSList}"/>
+
+    <var name="processCount" value="0"/>
+
+    <for list="${allprocesses}" param="processName" delimiter="${line.separator}">
+      <sequential>
+        <propertyregex property="mds.applications" input="@{processName}" regexp="(.*),(.*)" select="\1" override="true"/>
+        <propertyregex property="mds.undeploy" 	   input="@{processName}" regexp="(.*),(.*)" select="\2" override="true"/>
+        <math result="processCount" operand1="${processCount}" operation="+" operand2="1" datatype="int"/>
+
+        <echo>
+================================================================================
+DEPLOY ARTIFACT #${processCount}: ${mds.applications}
+================================================================================
+        </echo>
+
+        <foreach list="${mds.applications}" param="mds.application" target="importMDSArtifact" inheritall="true" inheritrefs="false"/>
+
+      </sequential>
+    </for>
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: importMDSArtifact                                                        -->
+  <!-- ================================================================================ -->
+  <target name="importMDSArtifact">
+
+    <property name="mds.deploy.dir" value="${tmp.output.dir}/${mds.application}"/>
+
+    <delete dir="${mds.deploy.dir}"/>
+    <mkdir dir="${mds.deploy.dir}"/>
+
+    <zip destfile="${mds.deploy.dir}/${mds.application}_mds.jar" compress="false">
+      <fileset dir="${local.mds.repository}" includes="${mds.application}/**"/>
+    </zip>
+
+    <zip destfile="${mds.deploy.dir}/${mds.application}_mds.zip" compress="false">
+      <fileset dir="${mds.deploy.dir}" includes="*.jar"/>
+    </zip>
+
+    <echo>SAR File: ${mds.deploy.dir}/${mds.application}_mds.zip</echo>
+
+    <ant antfile="${oracle.home}/bin/ant-sca-deploy.xml" inheritAll="false" target="deploy">
+       <property name="wl_home" 	value="${wl_home}"/>
+       <property name="oracle.home" 	value="${oracle.home}"/>
+       <property name="serverURL" 	value="${serverURL}"/>
+       <property name="user" 		value="${server.user}"/>
+       <property name="password" 	value="${server.password}"/>
+       <property name="overwrite" 	value="true"/>
+       <property name="forceDefault" 	value="true"/>
+       <property name="sarLocation" 	value="${mds.deploy.dir}/${mds.application}_mds.zip"/>
+    </ant>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: deleteMDSArtifact                                                      -->
+  <!-- ================================================================================ -->
+
+  <target name="deleteMDSArtifact">
+
+    <ant antfile="${oracle.home}/bin/ant-sca-deploy.xml" inheritAll="false" target="removeSharedData">
+      <property name="wl_home" 		value="${wl_home}"/>
+      <property name="oracle.home" 	value="${oracle.home}"/>
+      <property name="serverURL" 	value="${serverURL}"/>
+      <property name="user" 		value="${server.user}"/>
+      <property name="password" 	value="${server.password}"/>
+      <property name="folderName" 	value="${mds.application}"/>
+    </ant>
+
+  </target>
+
+
+  <!-- ================================================================================ -->
+  <!-- TARGET: exportMDS                                                                -->
+  <!-- ================================================================================ -->
+
+  <target name="exportMDS">
+
+    <tstamp>
+      <format property="start.timestamp" pattern="yyyy-MM-dd_HHmm" />
+    </tstamp>
+
+    <echo>
+================================================================================
+EXPORT MDS: ${local.mds.export}/MDSbackup.${targetenv}.${start.timestamp}.jar
+================================================================================
+    </echo>
+
+    <ant antfile="${oracle.home}/bin/ant-sca-deploy.xml" inheritAll="false" target="exportSharedData">
+
+      <property name="serverURL"        value="${serverURL}"/>
+      <property name="jarFile"          value="${local.mds.export}/MDSbackup.${targetenv}.${start.timestamp}.jar"/>
+      <property name="pattern"          value="**"/>
+      <property name="user"             value="${server.user}"/>
+      <property name="password"         value="${server.password}"/>
+    </ant>
+
+  </target>
+
+
+</project>
+
